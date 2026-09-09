@@ -18,6 +18,7 @@ import com.example.mycalendar.AppColors
 import com.example.mycalendar.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.providers.builtin.Email
+import io.github.jan.supabase.postgrest.from // ★ Postgrest insert를 위해 추가
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -46,7 +47,6 @@ fun SignUpScreen(
             Text(text = "마이 캘린더", style = MaterialTheme.typography.headlineMedium, color = AppColors.TextWhite)
         }
         Spacer(modifier = Modifier.height(32.dp))
-
 
         Card(
             colors = CardDefaults.cardColors(containerColor = AppColors.Card),
@@ -88,6 +88,7 @@ fun SignUpScreen(
 
                         coroutineScope.launch {
                             try {
+                                // 1. Supabase Auth 계정 생성
                                 SupabaseClient.client.auth.signUpWith(Email) {
                                     email = userId
                                     password = userPassword
@@ -95,10 +96,29 @@ fun SignUpScreen(
                                         put("name", userName)
                                     }
                                 }
-                                Toast.makeText(context, "회원가입이 완료되었습니다.", Toast.LENGTH_SHORT).show()
-                                onNavigateToLogin()
+
+                                val authUser = SupabaseClient.client.auth.currentUserOrNull()
+
+                                if (authUser != null) {
+                                    val userRecord = buildJsonObject {
+                                        put("user_uuid", authUser.id)
+                                        put("name", userName)
+                                        put("username", userId)
+                                        put("password", userPassword)
+                                        put("role", "USER")
+                                    }
+
+                                    SupabaseClient.client.from("users").insert(userRecord)
+
+                                    Toast.makeText(context, "회원가입이 완료되었습니다.", Toast.LENGTH_SHORT).show()
+                                    onNavigateToLogin()
+                                } else {
+                                    Toast.makeText(context, "이메일 인증이 필요하거나 계정을 불러올 수 없습니다.", Toast.LENGTH_LONG).show()
+                                }
+
                             } catch (e: Exception) {
-                                Toast.makeText(context, "이미 존재하는 아이디이거나 가입에 실패했습니다.", Toast.LENGTH_SHORT).show()
+                                android.util.Log.e("SignUpError", "가입 실패 원인", e)
+                                Toast.makeText(context, "가입 실패: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
                             }
                         }
                     },
