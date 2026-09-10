@@ -1,6 +1,7 @@
 package com.example.mycalendar.ui.login
 
 import android.widget.Toast
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -14,13 +15,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import com.example.mycalendar.AppColors
 import com.example.mycalendar.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.providers.builtin.Email
 import io.github.jan.supabase.postgrest.from
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
+import com.example.mycalendar.ui.AppColors
 
 @Serializable
 private data class UserRoleDto(
@@ -32,24 +33,35 @@ fun LoginScreen(
     onNavigateToSignUp: () -> Unit,
     onLoginSuccess: (role: String) -> Unit
 ) {
-    var userId by remember { mutableStateOf("") }
-    var userPassword by remember { mutableStateOf("") }
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+
+    var userId by remember { mutableStateOf("") }
+    var userPassword by remember { mutableStateOf("") }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(AppColors.Background)
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.DateRange, contentDescription = null, tint = AppColors.Primary, modifier = Modifier.size(32.dp))
+            Icon(
+                imageVector = Icons.Default.DateRange,
+                contentDescription = null,
+                tint = AppColors.Primary,
+                modifier = Modifier.size(32.dp)
+            )
             Spacer(modifier = Modifier.width(8.dp))
-            Text(text = "마이 캘린더", style = MaterialTheme.typography.headlineMedium, color = AppColors.TextWhite)
+            Text(
+                text = "마이 캘린더",
+                style = MaterialTheme.typography.headlineMedium,
+                color = AppColors.TextWhite
+            )
         }
+
         Spacer(modifier = Modifier.height(32.dp))
 
         Card(
@@ -112,7 +124,9 @@ fun LoginScreen(
                             }
                         }
                     },
-                    modifier = Modifier.fillMaxWidth().height(54.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(54.dp),
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = AppColors.Primary)
                 ) {

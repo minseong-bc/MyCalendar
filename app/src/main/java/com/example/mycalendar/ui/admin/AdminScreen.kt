@@ -14,7 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import com.example.mycalendar.AppColors
+import com.example.mycalendar.ui.AppColors
 import com.example.mycalendar.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.from
@@ -141,7 +141,7 @@ fun AdminScreen(
                     onClick = {
                         val selectedUser = targetUser
                         userToDelete = null // 팝업 닫기
-                        
+
                         coroutineScope.launch {
                             try {
                                 // Supabase DB에서 삭제 수행 (user_uuid 우선, 없을 경우 username 기준)
