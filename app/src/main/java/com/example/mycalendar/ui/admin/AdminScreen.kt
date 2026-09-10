@@ -1,5 +1,6 @@
 package com.example.mycalendar.ui.admin
 
+import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -11,17 +12,19 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.example.mycalendar.AppColors
 import com.example.mycalendar.SupabaseClient
-import io.github.jan.supabase.auth.auth // ★ 로그아웃 처리용 import
+import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.from
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 
-// users 테이블 조회용 DTO (created_at 필드 추가)
+// users 테이블 조회 및 삭제용 DTO
 @Serializable
 private data class UserDto(
+    val user_uuid: String? = null,
     val name: String? = "",
     val username: String? = "",
     val role: String? = "",
@@ -36,9 +39,12 @@ fun AdminScreen(
     var isLoading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    // ★ 팝업(AlertDialog) 노출 상태 변수 및 CoroutineScope 추가
-    var showLogoutDialog by remember { mutableStateOf(false) }
+    val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+
+    // 팝업(AlertDialog) 노출 상태 변수
+    var showLogoutDialog by remember { mutableStateOf(false) }
+    var userToDelete by remember { mutableStateOf<UserDto?>(null) } // 삭제 대상 사용자
 
     // 화면 진입 시 DB 조회
     LaunchedEffect(Unit) {
@@ -58,7 +64,7 @@ fun AdminScreen(
         }
     }
 
-    // ★ 1. 로그아웃 확인 다이얼로그 팝업
+    // 1. 로그아웃 확인 다이얼로그 팝업
     if (showLogoutDialog) {
         AlertDialog(
             onDismissRequest = { showLogoutDialog = false },
@@ -77,7 +83,6 @@ fun AdminScreen(
                     style = MaterialTheme.typography.bodyMedium
                 )
             },
-            // 취소 버튼
             dismissButton = {
                 TextButton(
                     onClick = { showLogoutDialog = false }
@@ -85,24 +90,83 @@ fun AdminScreen(
                     Text("취소", color = AppColors.TextGray)
                 }
             },
-            // 로그아웃 확정 버튼
             confirmButton = {
                 TextButton(
                     onClick = {
                         showLogoutDialog = false
                         coroutineScope.launch {
                             try {
-                                // Supabase Auth 로그아웃 수행
                                 SupabaseClient.client.auth.signOut()
                             } catch (e: Exception) {
                                 android.util.Log.e("LogoutError", "로그아웃 에러", e)
                             }
-                            // 로그인 화면으로 이동 콜백 실행
                             onLogout()
                         }
                     }
                 ) {
                     Text("로그아웃", color = Color(0xFFFF8A8A))
+                }
+            }
+        )
+    }
+
+    // 2. 사용자 삭제 확인 다이얼로그 팝업
+    userToDelete?.let { targetUser ->
+        AlertDialog(
+            onDismissRequest = { userToDelete = null },
+            containerColor = AppColors.Card,
+            title = {
+                Text(
+                    text = "사용자 삭제",
+                    color = AppColors.TextWhite,
+                    style = MaterialTheme.typography.titleMedium
+                )
+            },
+            text = {
+                Text(
+                    text = "해당 사용자를 삭제하시겠습니까?",
+                    color = AppColors.TextWhite,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { userToDelete = null } // 취소 선택 시 팝업 닫기
+                ) {
+                    Text("취소", color = AppColors.TextGray)
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val selectedUser = targetUser
+                        userToDelete = null // 팝업 닫기
+                        
+                        coroutineScope.launch {
+                            try {
+                                // Supabase DB에서 삭제 수행 (user_uuid 우선, 없을 경우 username 기준)
+                                SupabaseClient.client.from("users")
+                                    .delete {
+                                        filter {
+                                            if (!selectedUser.user_uuid.isNullOrBlank()) {
+                                                eq("user_uuid", selectedUser.user_uuid)
+                                            } else if (!selectedUser.username.isNullOrBlank()) {
+                                                eq("username", selectedUser.username)
+                                            }
+                                        }
+                                    }
+
+                                // UI 목록에서 해당 사용자 제거
+                                userList = userList.filter { it != selectedUser }
+                                Toast.makeText(context, "해당 사용자를 삭제하였습니다", Toast.LENGTH_SHORT).show()
+                            } catch (e: Exception) {
+                                android.util.Log.e("DeleteUserError", "사용자 삭제 실패", e)
+                                Toast.makeText(context, "사용자 삭제에 실패하였습니다", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                ) {
+                    Text("삭제", color = Color(0xFFFF8A8A))
                 }
             }
         )
@@ -134,9 +198,8 @@ fun AdminScreen(
                 )
             }
 
-            // 로그아웃 버튼 (클릭 시 다이얼로그 팝업 노출)
             Button(
-                onClick = { showLogoutDialog = true }, // ★ 다이얼로그 표시
+                onClick = { showLogoutDialog = true },
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2B3145)),
                 shape = RoundedCornerShape(20.dp),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
@@ -151,7 +214,7 @@ fun AdminScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // 2. 인원 수 표시
+        // 인원 수 표시
         if (!isLoading && errorMessage == null) {
             Text(
                 text = "${userList.size}명",
@@ -162,7 +225,7 @@ fun AdminScreen(
             Spacer(modifier = Modifier.height(12.dp))
         }
 
-        // 3. 본문 영역
+        // 본문 영역
         Box(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
@@ -225,7 +288,7 @@ fun AdminScreen(
                                     // 버튼 영역 (우측: 수정 / 삭제)
                                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                         Button(
-                                            onClick = { /* 기능 없음 */ },
+                                            onClick = { /* 수정 기능 (미구현) */ },
                                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF384055)),
                                             shape = RoundedCornerShape(10.dp),
                                             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
@@ -238,8 +301,9 @@ fun AdminScreen(
                                             )
                                         }
 
+                                        // 삭제 버튼 클릭 시 targetUser 지정 -> 팝업 출력
                                         Button(
-                                            onClick = { /* 기능 없음 */ },
+                                            onClick = { userToDelete = user },
                                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6E2D38)),
                                             shape = RoundedCornerShape(10.dp),
                                             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
