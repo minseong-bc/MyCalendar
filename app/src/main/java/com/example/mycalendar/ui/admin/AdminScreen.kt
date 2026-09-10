@@ -14,7 +14,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.example.mycalendar.AppColors
 import com.example.mycalendar.SupabaseClient
+import io.github.jan.supabase.auth.auth // ★ 로그아웃 처리용 import
 import io.github.jan.supabase.postgrest.from
+import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 
 // users 테이블 조회용 DTO (created_at 필드 추가)
@@ -28,11 +30,15 @@ private data class UserDto(
 
 @Composable
 fun AdminScreen(
-    onLogout: () -> Unit = {} // 로그아웃 콜백 함수
+    onLogout: () -> Unit = {} // 로그아웃 성공 시 로그인 화면 이동 콜백
 ) {
     var userList by remember { mutableStateOf<List<UserDto>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    // ★ 팝업(AlertDialog) 노출 상태 변수 및 CoroutineScope 추가
+    var showLogoutDialog by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
 
     // 화면 진입 시 DB 조회
     LaunchedEffect(Unit) {
@@ -52,12 +58,62 @@ fun AdminScreen(
         }
     }
 
+    // ★ 1. 로그아웃 확인 다이얼로그 팝업
+    if (showLogoutDialog) {
+        AlertDialog(
+            onDismissRequest = { showLogoutDialog = false },
+            containerColor = AppColors.Card,
+            title = {
+                Text(
+                    text = "로그아웃",
+                    color = AppColors.TextWhite,
+                    style = MaterialTheme.typography.titleMedium
+                )
+            },
+            text = {
+                Text(
+                    text = "로그아웃 하시겠습니까?",
+                    color = AppColors.TextWhite,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            // 취소 버튼
+            dismissButton = {
+                TextButton(
+                    onClick = { showLogoutDialog = false }
+                ) {
+                    Text("취소", color = AppColors.TextGray)
+                }
+            },
+            // 로그아웃 확정 버튼
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showLogoutDialog = false
+                        coroutineScope.launch {
+                            try {
+                                // Supabase Auth 로그아웃 수행
+                                SupabaseClient.client.auth.signOut()
+                            } catch (e: Exception) {
+                                android.util.Log.e("LogoutError", "로그아웃 에러", e)
+                            }
+                            // 로그인 화면으로 이동 콜백 실행
+                            onLogout()
+                        }
+                    }
+                ) {
+                    Text("로그아웃", color = Color(0xFFFF8A8A))
+                }
+            }
+        )
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(24.dp)
     ) {
-        // 1. 상단 헤더 영역 (아이콘 + 제목 + 로그아웃 버튼)
+        // 상단 헤더 영역 (아이콘 + 제목 + 로그아웃 버튼)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -78,9 +134,9 @@ fun AdminScreen(
                 )
             }
 
-            // 로그아웃 버튼 (기능 미연동 UI)
+            // 로그아웃 버튼 (클릭 시 다이얼로그 팝업 노출)
             Button(
-                onClick = onLogout,
+                onClick = { showLogoutDialog = true }, // ★ 다이얼로그 표시
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2B3145)),
                 shape = RoundedCornerShape(20.dp),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
@@ -168,7 +224,6 @@ fun AdminScreen(
 
                                     // 버튼 영역 (우측: 수정 / 삭제)
                                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        // 수정 버튼
                                         Button(
                                             onClick = { /* 기능 없음 */ },
                                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF384055)),
@@ -183,7 +238,6 @@ fun AdminScreen(
                                             )
                                         }
 
-                                        // 삭제 버튼
                                         Button(
                                             onClick = { /* 기능 없음 */ },
                                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6E2D38)),
@@ -208,5 +262,4 @@ fun AdminScreen(
     }
 }
 
-// isNullOrBlank 확장 함수 안전망
 private fun String?.isNull_Blank(): Boolean = this == null || this.isBlank()

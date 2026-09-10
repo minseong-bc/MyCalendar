@@ -69,8 +69,14 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     composable("admin") {
-                        AdminScreen()
-                    }
+                        AdminScreen(
+                            onLogout = {
+                                navController.navigate("login") {
+                                    popUpTo("admin") { inclusive = true } // 백스택에서 관리자 화면 제거
+                                }
+                            }
+                        )
+                    }                
                 }
             }
         }
