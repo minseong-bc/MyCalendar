@@ -18,12 +18,19 @@ import com.example.mycalendar.AppColors
 import com.example.mycalendar.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.providers.builtin.Email
+import io.github.jan.supabase.postgrest.from
 import kotlinx.coroutines.launch
+import kotlinx.serialization.Serializable
+
+@Serializable
+private data class UserRoleDto(
+    val role: String? = "USER"
+)
 
 @Composable
 fun LoginScreen(
     onNavigateToSignUp: () -> Unit,
-    onLoginSuccess: () -> Unit
+    onLoginSuccess: (role: String) -> Unit
 ) {
     var userId by remember { mutableStateOf("") }
     var userPassword by remember { mutableStateOf("") }
@@ -44,7 +51,6 @@ fun LoginScreen(
             Text(text = "마이 캘린더", style = MaterialTheme.typography.headlineMedium, color = AppColors.TextWhite)
         }
         Spacer(modifier = Modifier.height(32.dp))
-
 
         Card(
             colors = CardDefaults.cardColors(containerColor = AppColors.Card),
@@ -81,9 +87,27 @@ fun LoginScreen(
                                     email = userId
                                     password = userPassword
                                 }
-                                Toast.makeText(context, "로그인 성공!", Toast.LENGTH_SHORT).show()
-                                onLoginSuccess()
+
+                                val currentUser = SupabaseClient.client.auth.currentUserOrNull()
+
+                                if (currentUser != null) {
+                                    val userRecord = SupabaseClient.client.from("users")
+                                        .select {
+                                            filter {
+                                                eq("user_uuid", currentUser.id)
+                                            }
+                                        }.decodeSingleOrNull<UserRoleDto>()
+
+                                    val role = userRecord?.role ?: "USER"
+
+                                    Toast.makeText(context, "로그인 성공!", Toast.LENGTH_SHORT).show()
+                                    onLoginSuccess(role)
+                                } else {
+                                    Toast.makeText(context, "사용자 정보를 불러올 수 없습니다.", Toast.LENGTH_SHORT).show()
+                                }
+
                             } catch (e: Exception) {
+                                android.util.Log.e("LoginError", "로그인 에러", e)
                                 Toast.makeText(context, "아이디가 존재하지 않거나 비밀번호가 맞지 않습니다.", Toast.LENGTH_SHORT).show()
                             }
                         }
@@ -136,4 +160,3 @@ fun CustomTextField(
         )
     }
 }
-

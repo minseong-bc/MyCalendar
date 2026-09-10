@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.example.mycalendar.ui.admin.AdminScreen // 패키지 경로 일치
 import com.example.mycalendar.ui.login.LoginScreen
 import com.example.mycalendar.ui.signup.SignUpScreen
 
@@ -34,39 +35,47 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = AppColors.Background
-                ) {
-                    val navController = rememberNavController()
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = AppColors.Background
+            ) {
+                val navController = rememberNavController()
 
-                    NavHost(navController = navController, startDestination = "main") {
-                        composable("main") {
-                            MainScreen(
-                                onNavigateToLogin = { navController.navigate("login") },
-                                onNavigateToSignUp = { navController.navigate("signup") }
-                            )
-                        }
-                        composable("login") {
-                            LoginScreen(
-                                onNavigateToSignUp = { navController.navigate("signup") },
-                                onLoginSuccess = { }
-                            )
-                        }
-                        composable("signup") {
-                            SignUpScreen(
-                                onNavigateToLogin = {
-                                    navController.navigate("login") {
-                                        popUpTo("main")
-                                    }
+                NavHost(navController = navController, startDestination = "login") {
+                    composable("login") {
+                        LoginScreen(
+                            onNavigateToSignUp = { navController.navigate("signup") },
+                            onLoginSuccess = { role: String ->
+                                val destination = if (role == "ADMIN") "admin" else "main"
+                                navController.navigate(destination) {
+                                    popUpTo("login") { inclusive = true }
                                 }
-                            )
-                        }
+                            }
+                        )
+                    }
+                    composable("signup") {
+                        SignUpScreen(
+                            onNavigateToLogin = {
+                                navController.navigate("login") {
+                                    popUpTo("signup") { inclusive = true }
+                                }
+                            }
+                        )
+                    }
+                    composable("main") {
+                        MainScreen(
+                            onNavigateToLogin = { navController.navigate("login") },
+                            onNavigateToSignUp = { navController.navigate("signup") }
+                        )
+                    }
+                    composable("admin") {
+                        AdminScreen()
                     }
                 }
             }
         }
     }
+}
 
 @Composable
 fun MainScreen(
