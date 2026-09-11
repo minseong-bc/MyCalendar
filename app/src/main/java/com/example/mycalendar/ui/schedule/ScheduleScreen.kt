@@ -17,6 +17,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.mycalendar.SupabaseClient
 import com.example.mycalendar.ui.main.MainColors
 import io.github.jan.supabase.auth.auth
@@ -50,29 +51,23 @@ data class ScheduleCategoryDto(val schedule_id: String, val category_id: String)
 fun ScheduleScreen(
     scheduleToEdit: ScheduleDto? = null,
     initialDate: String? = null,
+    viewModel: ScheduleViewModel = viewModel(),
     onBack: () -> Unit,
     onNavigateToAddCategory: () -> Unit,
     onSaveComplete: () -> Unit
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-
     val isEditMode = scheduleToEdit != null
 
-    var title by remember { mutableStateOf(scheduleToEdit?.title ?: "") }
-    var scheduleDate by remember { mutableStateOf(scheduleToEdit?.schedule_date ?: initialDate ?: "") }
-    var scheduleTime by remember { mutableStateOf(scheduleToEdit?.schedule_time ?: "") }
-
     var expandedCategory by remember { mutableStateOf(false) }
-    var availableCategories by remember { mutableStateOf<List<CategoryDto>>(emptyList()) }
-    var selectedCategoryIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var isSaving by remember { mutableStateOf(false) }
 
     val calendar = Calendar.getInstance()
     val datePickerDialog = DatePickerDialog(
         context,
         { _, year, month, dayOfMonth ->
-            scheduleDate = String.format("%04d-%02d-%02d", year, month + 1, dayOfMonth)
+            viewModel.scheduleDate = String.format("%04d-%02d-%02d", year, month + 1, dayOfMonth)
         },
         calendar.get(Calendar.YEAR),
         calendar.get(Calendar.MONTH),
@@ -82,33 +77,14 @@ fun ScheduleScreen(
     val timePickerDialog = TimePickerDialog(
         context,
         { _, hourOfDay, minute ->
-            scheduleTime = String.format("%02d:%02d", hourOfDay, minute)
+            viewModel.scheduleTime = String.format("%02d:%02d", hourOfDay, minute)
         },
         12, 0, true
     )
 
     LaunchedEffect(Unit) {
         try {
-            val user = SupabaseClient.client.auth.currentUserOrNull()
-            if (user != null) {
-                val fetchedCategories = SupabaseClient.client.postgrest["categories"]
-                    .select { filter { eq("user_uuid", user.id) } }.decodeList<CategoryDto>()
-
-                if (fetchedCategories.isEmpty()) {
-                    val defaultCategory = CategoryDto(user_uuid = user.id, title = "일반")
-                    SupabaseClient.client.postgrest["categories"].insert(defaultCategory)
-                    availableCategories = listOf(defaultCategory.copy(category_id = "temp_default_id"))
-                } else {
-                    availableCategories = fetchedCategories
-                }
-
-                if (isEditMode && scheduleToEdit?.schedule_id != null) {
-                    val mappings = SupabaseClient.client.postgrest["schedule_categories"]
-                        .select { filter { eq("schedule_id", scheduleToEdit.schedule_id) } }
-                        .decodeList<ScheduleCategoryDto>()
-                    selectedCategoryIds = mappings.map { it.category_id }.toSet()
-                }
-            }
+            viewModel.loadCategoriesAndData(scheduleToEdit, initialDate)
         } catch (e: Exception) {
             android.util.Log.e("ScheduleError", "카테고리 오류 상세", e)
             Toast.makeText(context, "카테고리 오류: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -128,15 +104,18 @@ fun ScheduleScreen(
         Column(modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp)) {
 
             OutlinedTextField(
-                value = title, onValueChange = { title = it }, label = { Text("일정 이름 *", color = MainColors.TextGray) },
-                modifier = Modifier.fillMaxWidth(), colors = OutlinedTextFieldDefaults.colors(focusedTextColor = MainColors.TextWhite, unfocusedTextColor = MainColors.TextWhite)
+                value = viewModel.title,
+                onValueChange = { viewModel.title = it },
+                label = { Text("일정 이름 *", color = MainColors.TextGray) },
+                modifier = Modifier.fillMaxWidth(),
+                colors = OutlinedTextFieldDefaults.colors(focusedTextColor = MainColors.TextWhite, unfocusedTextColor = MainColors.TextWhite)
             )
             Spacer(modifier = Modifier.height(16.dp))
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 Box(modifier = Modifier.weight(1f).clickable { datePickerDialog.show() }) {
                     OutlinedTextField(
-                        value = scheduleDate, onValueChange = {}, readOnly = true, enabled = false,
+                        value = viewModel.scheduleDate, onValueChange = {}, readOnly = true, enabled = false,
                         label = { Text("날짜 선택", color = MainColors.TextGray) },
                         modifier = Modifier.fillMaxWidth(),
                         colors = OutlinedTextFieldDefaults.colors(disabledTextColor = MainColors.TextWhite, disabledBorderColor = MainColors.TextGray, disabledLabelColor = MainColors.TextGray)
@@ -145,7 +124,7 @@ fun ScheduleScreen(
 
                 Box(modifier = Modifier.weight(1f).clickable { timePickerDialog.show() }) {
                     OutlinedTextField(
-                        value = scheduleTime, onValueChange = {}, readOnly = true, enabled = false,
+                        value = viewModel.scheduleTime, onValueChange = {}, readOnly = true, enabled = false,
                         label = { Text("시간 선택", color = MainColors.TextGray) },
                         modifier = Modifier.fillMaxWidth(),
                         colors = OutlinedTextFieldDefaults.colors(disabledTextColor = MainColors.TextWhite, disabledBorderColor = MainColors.TextGray, disabledLabelColor = MainColors.TextGray)
@@ -158,7 +137,9 @@ fun ScheduleScreen(
                 expanded = expandedCategory,
                 onExpandedChange = { expandedCategory = !expandedCategory }
             ) {
-                val selectedNames = availableCategories.filter { selectedCategoryIds.contains(it.category_id) }.joinToString(", ") { it.title }
+                val selectedNames = viewModel.availableCategories
+                    .filter { viewModel.selectedCategoryIds.contains(it.category_id) }
+                    .joinToString(", ") { it.title }
                 val displayText = if (selectedNames.isEmpty()) "카테고리를 선택하세요 (기본: 일반)" else selectedNames
 
                 OutlinedTextField(
@@ -172,9 +153,9 @@ fun ScheduleScreen(
                     expanded = expandedCategory, onDismissRequest = { expandedCategory = false },
                     modifier = Modifier.background(MainColors.Card)
                 ) {
-                    availableCategories.forEach { category ->
+                    viewModel.availableCategories.forEach { category ->
                         category.category_id?.let { catId ->
-                            val isSelected = selectedCategoryIds.contains(catId)
+                            val isSelected = viewModel.selectedCategoryIds.contains(catId)
                             DropdownMenuItem(
                                 text = {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -184,12 +165,13 @@ fun ScheduleScreen(
                                     }
                                 },
                                 onClick = {
-                                    selectedCategoryIds = if (isSelected) selectedCategoryIds - catId else selectedCategoryIds + catId
+                                    viewModel.selectedCategoryIds = if (isSelected) viewModel.selectedCategoryIds - catId else viewModel.selectedCategoryIds + catId
                                 }
                             )
                         }
                     }
-                    Divider(color = MainColors.Background)
+                    HorizontalDivider(color = MainColors.Background)
+
                     DropdownMenuItem(
                         text = { Text("+ 새 카테고리 추가", color = MainColors.Primary, fontWeight = FontWeight.Bold) },
                         onClick = {
@@ -204,7 +186,10 @@ fun ScheduleScreen(
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 Button(
-                    onClick = onBack,
+                    onClick = {
+                        viewModel.clearInputs()
+                        onBack()
+                    },
                     modifier = Modifier.weight(1f).height(54.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF374151)),
                     shape = RoundedCornerShape(12.dp),
@@ -215,7 +200,7 @@ fun ScheduleScreen(
 
                 Button(
                     onClick = {
-                        if (title.isBlank() || scheduleDate.isBlank() || scheduleTime.isBlank()) {
+                        if (viewModel.title.isBlank() || viewModel.scheduleDate.isBlank() || viewModel.scheduleTime.isBlank()) {
                             Toast.makeText(context, "일정 이름, 날짜, 시간을 모두 입력해주세요.", Toast.LENGTH_SHORT).show()
                             return@Button
                         }
@@ -226,7 +211,7 @@ fun ScheduleScreen(
                                 val user = SupabaseClient.client.auth.currentUserOrNull() ?: throw Exception("로그인 정보가 없습니다.")
                                 val targetScheduleId = scheduleToEdit?.schedule_id ?: UUID.randomUUID().toString()
 
-                                val scheduleData = ScheduleDto(targetScheduleId, user.id, title, scheduleDate, scheduleTime)
+                                val scheduleData = ScheduleDto(targetScheduleId, user.id, viewModel.title, viewModel.scheduleDate, viewModel.scheduleTime)
 
                                 if (isEditMode) {
                                     SupabaseClient.client.postgrest["schedules"].update(scheduleData) {
@@ -239,9 +224,9 @@ fun ScheduleScreen(
                                     SupabaseClient.client.postgrest["schedules"].insert(scheduleData)
                                 }
 
-                                var finalCategoryIds = selectedCategoryIds
+                                var finalCategoryIds = viewModel.selectedCategoryIds
                                 if (finalCategoryIds.isEmpty()) {
-                                    val generalCategory = availableCategories.find { it.title == "일반" }
+                                    val generalCategory = viewModel.availableCategories.find { it.title == "일반" }
                                     if (generalCategory?.category_id != null) {
                                         finalCategoryIds = setOf(generalCategory.category_id)
                                     }
@@ -253,6 +238,7 @@ fun ScheduleScreen(
                                 }
 
                                 Toast.makeText(context, if (isEditMode) "일정이 수정되었습니다." else "일정이 등록되었습니다.", Toast.LENGTH_SHORT).show()
+                                viewModel.clearInputs()
                                 onSaveComplete()
                             } catch (e: Exception) {
                                 Toast.makeText(context, "저장 실패: ${e.message}", Toast.LENGTH_SHORT).show()
