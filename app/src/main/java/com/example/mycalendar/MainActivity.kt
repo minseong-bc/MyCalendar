@@ -21,6 +21,8 @@ import com.example.mycalendar.ui.schedule.ScheduleScreen
 import com.example.mycalendar.ui.schedule.ScheduleViewModel
 import com.example.mycalendar.ui.signup.SignUpScreen
 import com.example.mycalendar.ui.theme.MyCalendarTheme
+import com.example.mycalendar.ui.category.CategoryEdit  
+import com.example.mycalendar.ui.D_day.DdayScreen       
 import io.github.jan.supabase.auth.auth
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
@@ -74,9 +76,20 @@ class MainActivity : ComponentActivity() {
                                     navController.currentBackStackEntry?.savedStateHandle?.set("initialDate", null as String?)
                                     navController.navigate("schedule_add")
                                 },
+                                onNavigateToCategoryEdit = {
+                                    // 기존 "category_add" -> "category_edit" 로 수정
+                                    navController.navigate("category_edit")
+                                },
+                                onNavigateToDDay = { 
+                                    navController.navigate("dday_screen") 
+                                },
                                 onLogout = {
                                     coroutineScope.launch {
-                                        SupabaseClient.client.auth.signOut()
+                                        try {
+                                            SupabaseClient.client.auth.signOut()
+                                        } catch (e: Exception) {
+                                            e.printStackTrace()
+                                        }
                                         navController.navigate("login") {
                                             popUpTo("main") { inclusive = true }
                                         }
@@ -111,11 +124,27 @@ class MainActivity : ComponentActivity() {
                             )
                         }
 
+                        composable("category_edit") {
+                            CategoryEdit(
+                                onBack = { navController.popBackStack() }
+                            )
+                        }
+
+                        composable("dday_screen") {
+                            DdayScreen(
+                                onBack = { navController.popBackStack() }
+                            )
+                        }
+
                         composable("admin") {
                             AdminScreen(
                                 onLogout = {
                                     coroutineScope.launch {
-                                        SupabaseClient.client.auth.signOut()
+                                        try {
+                                            SupabaseClient.client.auth.signOut()
+                                        } catch (e: Exception) {
+                                            e.printStackTrace()
+                                        }
                                         navController.navigate("login") {
                                             popUpTo("admin") { inclusive = true }
                                         }

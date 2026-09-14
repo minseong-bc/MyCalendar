@@ -65,19 +65,30 @@ object MainColors {
 fun MainScreen(
     onNavigateToAddSchedule: (String?) -> Unit,
     onNavigateToEditSchedule: (ScheduleDto) -> Unit,
+    onNavigateToCategoryEdit: () -> Unit,
+    onNavigateToDDay: () -> Unit, // ★ D-Day 화면 이동 콜백 추가
     onLogout: () -> Unit
 ) {
     var selectedTab by remember { mutableStateOf("홈") }
 
     Scaffold(
         containerColor = MainColors.Background,
-        bottomBar = { BottomNavigationBar(selectedTab) { selectedTab = it } }
+        bottomBar = {
+            BottomNavigationBar(
+                selectedTab = selectedTab,
+                onTabSelected = { tab ->
+                    when (tab) {
+                        "카테고리" -> onNavigateToCategoryEdit() // '카테고리' 클릭 시 이동
+                        "D-Day" -> onNavigateToDDay()         // ★ 'D-Day' 클릭 시 이동
+                        else -> selectedTab = tab
+                    }
+                }
+            )
+        }
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
             when (selectedTab) {
                 "홈" -> HomeCalendarContent(onLogout, onNavigateToAddSchedule, onNavigateToEditSchedule)
-                "카테고리" -> CategoryContent()
-                "D-Day" -> DDayContent()
             }
         }
     }
@@ -484,12 +495,3 @@ fun BottomNavigationBar(selectedTab: String, onTabSelected: (String) -> Unit) {
         )
     }
 }
-
-@Composable
-fun CategoryContent() { Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("카테고리 관리 화면", color = MainColors.TextWhite) } }
-
-@Composable
-fun DDayContent() { Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("D-Day 관리 화면", color = MainColors.TextWhite) } }
-
-
-
