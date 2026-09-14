@@ -1,11 +1,14 @@
 package com.example.mycalendar.ui.schedule
 
 import android.app.DatePickerDialog
-import android.app.TimePickerDialog
 import android.widget.Toast
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -16,7 +19,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.mycalendar.SupabaseClient
 import com.example.mycalendar.ui.main.MainColors
@@ -40,7 +45,9 @@ data class ScheduleDto(
     val user_uuid: String,
     val title: String,
     val schedule_date: String,
-    val schedule_time: String
+    val schedule_time: String,
+    val is_completed: Boolean = false,
+    val dday: Boolean = false
 )
 
 @Serializable
@@ -59,11 +66,13 @@ fun ScheduleScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val isEditMode = scheduleToEdit != null
-
     var expandedCategory by remember { mutableStateOf(false) }
     var isSaving by remember { mutableStateOf(false) }
 
+    var showWheelTimePicker by remember { mutableStateOf(false) }
+
     val calendar = Calendar.getInstance()
+
     val datePickerDialog = DatePickerDialog(
         context,
         { _, year, month, dayOfMonth ->
@@ -74,20 +83,11 @@ fun ScheduleScreen(
         calendar.get(Calendar.DAY_OF_MONTH)
     )
 
-    val timePickerDialog = TimePickerDialog(
-        context,
-        { _, hourOfDay, minute ->
-            viewModel.scheduleTime = String.format("%02d:%02d", hourOfDay, minute)
-        },
-        12, 0, true
-    )
-
     LaunchedEffect(Unit) {
         try {
             viewModel.loadCategoriesAndData(scheduleToEdit, initialDate)
         } catch (e: Exception) {
-            android.util.Log.e("ScheduleError", "카테고리 오류 상세", e)
-            Toast.makeText(context, "카테고리 오류: ${e.message}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "카테고리 불러오기 실패: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -122,10 +122,10 @@ fun ScheduleScreen(
                     )
                 }
 
-                Box(modifier = Modifier.weight(1f).clickable { timePickerDialog.show() }) {
+                Box(modifier = Modifier.weight(1f).clickable { showWheelTimePicker = true }) {
                     OutlinedTextField(
-                        value = viewModel.scheduleTime, onValueChange = {}, readOnly = true, enabled = false,
-                        label = { Text("시간 선택", color = MainColors.TextGray) },
+                        value = viewModel.scheduleTime.ifEmpty { "시간 선택" }, onValueChange = {}, readOnly = true, enabled = false,
+                        label = { Text("시간 선택 (시:분)", color = MainColors.TextGray) },
                         modifier = Modifier.fillMaxWidth(),
                         colors = OutlinedTextFieldDefaults.colors(disabledTextColor = MainColors.TextWhite, disabledBorderColor = MainColors.TextGray, disabledLabelColor = MainColors.TextGray)
                     )
@@ -182,6 +182,33 @@ fun ScheduleScreen(
                 }
             }
 
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MainColors.Card),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("D-Day 등록", color = MainColors.TextWhite, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Text("D-Day 화면에서 남은 일수를 확인할 수 있습니다.", color = MainColors.TextGray, fontSize = 11.sp)
+                    }
+                    Switch(
+                        checked = viewModel.isDday,
+                        onCheckedChange = { viewModel.isDday = it },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = MainColors.TextWhite,
+                            checkedTrackColor = MainColors.Primary
+                        )
+                    )
+                }
+            }
+
             Spacer(modifier = Modifier.weight(1f))
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -211,7 +238,15 @@ fun ScheduleScreen(
                                 val user = SupabaseClient.client.auth.currentUserOrNull() ?: throw Exception("로그인 정보가 없습니다.")
                                 val targetScheduleId = scheduleToEdit?.schedule_id ?: UUID.randomUUID().toString()
 
-                                val scheduleData = ScheduleDto(targetScheduleId, user.id, viewModel.title, viewModel.scheduleDate, viewModel.scheduleTime)
+                                val scheduleData = ScheduleDto(
+                                    schedule_id = targetScheduleId,
+                                    user_uuid = user.id,
+                                    title = viewModel.title,
+                                    schedule_date = viewModel.scheduleDate,
+                                    schedule_time = viewModel.scheduleTime,
+                                    is_completed = scheduleToEdit?.is_completed ?: false,
+                                    dday = viewModel.isDday
+                                )
 
                                 if (isEditMode) {
                                     SupabaseClient.client.postgrest["schedules"].update(scheduleData) {
@@ -258,5 +293,149 @@ fun ScheduleScreen(
             }
         }
     }
+
+    if (showWheelTimePicker) {
+        val timeParts = viewModel.scheduleTime.split(":")
+        val initialHour = timeParts.getOrNull(0)?.toIntOrNull() ?: calendar.get(Calendar.HOUR_OF_DAY)
+        val initialMinute = timeParts.getOrNull(1)?.toIntOrNull() ?: calendar.get(Calendar.MINUTE)
+
+        WheelTimePickerDialog(
+            initialHour = initialHour,
+            initialMinute = initialMinute,
+            onDismissRequest = { showWheelTimePicker = false },
+            onTimeSelected = { hour, minute ->
+                viewModel.scheduleTime = String.format("%02d:%02d", hour, minute)
+            }
+        )
+    }
 }
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun WheelTimePickerDialog(
+    initialHour: Int,
+    initialMinute: Int,
+    onDismissRequest: () -> Unit,
+    onTimeSelected: (hour: Int, minute: Int) -> Unit
+) {
+    var selectedHour by remember { mutableIntStateOf(initialHour) }
+    var selectedMinute by remember { mutableIntStateOf(initialMinute) }
+
+    AlertDialog(
+        onDismissRequest = onDismissRequest,
+        containerColor = MainColors.Card,
+        title = {
+            Text(
+                text = "시간 선택",
+                color = MainColors.TextWhite,
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
+        },
+        text = {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(180.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                WheelPicker(
+                    items = (0..23).map { String.format("%02d시", it) },
+                    initialIndex = initialHour,
+                    onItemSelected = { selectedHour = it }
+                )
+
+                Spacer(modifier = Modifier.width(16.dp))
+                Text(":", color = MainColors.TextWhite, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.width(16.dp))
+
+                WheelPicker(
+                    items = (0..59).map { String.format("%02d분", it) },
+                    initialIndex = initialMinute,
+                    onItemSelected = { selectedMinute = it }
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    onTimeSelected(selectedHour, selectedMinute)
+                    onDismissRequest()
+                }
+            ) {
+                Text("확인", color = MainColors.Primary, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismissRequest) {
+                Text("취소", color = MainColors.TextWhite)
+            }
+        }
+    )
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun WheelPicker(
+    items: List<String>,
+    initialIndex: Int,
+    onItemSelected: (Int) -> Unit
+) {
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = initialIndex)
+    val snapFlingBehavior = rememberSnapFlingBehavior(lazyListState = listState)
+
+    val currentCenteredIndex by remember {
+        derivedStateOf {
+            val firstVisibleIndex = listState.firstVisibleItemIndex
+            val offset = listState.firstVisibleItemScrollOffset
+            if (offset > 50) (firstVisibleIndex + 1).coerceAtMost(items.size - 1)
+            else firstVisibleIndex
+        }
+    }
+
+    LaunchedEffect(currentCenteredIndex) {
+        onItemSelected(currentCenteredIndex)
+    }
+
+    Box(
+        modifier = Modifier
+            .width(80.dp)
+            .height(180.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(40.dp),
+            color = MainColors.Background,
+            shape = RoundedCornerShape(8.dp)
+        ) {}
+
+        LazyColumn(
+            state = listState,
+            flingBehavior = snapFlingBehavior,
+            contentPadding = PaddingValues(vertical = 70.dp),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            items(items.size) { index ->
+                val isSelected = index == currentCenteredIndex
+                Text(
+                    text = items[index],
+                    color = if (isSelected) MainColors.Primary else MainColors.TextGray,
+                    fontSize = if (isSelected) 18.sp else 14.sp,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(40.dp)
+                        .wrapContentHeight()
+                )
+            }
+        }
+    }
+}
+
 

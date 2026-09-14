@@ -12,6 +12,7 @@ class ScheduleViewModel : ViewModel() {
     var title by mutableStateOf("")
     var scheduleDate by mutableStateOf("")
     var scheduleTime by mutableStateOf("")
+    var isDday by mutableStateOf(false)
     var selectedCategoryIds by mutableStateOf<Set<String>>(emptySet())
     var availableCategories by mutableStateOf<List<CategoryDto>>(emptyList())
     var isInitialized by mutableStateOf(false)
@@ -23,6 +24,7 @@ class ScheduleViewModel : ViewModel() {
             title = scheduleToEdit?.title ?: ""
             scheduleDate = scheduleToEdit?.schedule_date ?: initialDate ?: ""
             scheduleTime = scheduleToEdit?.schedule_time ?: ""
+            isDday = scheduleToEdit?.dday ?: false
             isInitialized = true
         }
 
@@ -39,7 +41,7 @@ class ScheduleViewModel : ViewModel() {
         } else {
             availableCategories = fetchedCategories
         }
-        
+
         if (scheduleToEdit?.schedule_id != null && selectedCategoryIds.isEmpty()) {
             val mappings = SupabaseClient.client.postgrest["schedule_categories"]
                 .select { filter { eq("schedule_id", scheduleToEdit.schedule_id) } }
@@ -52,6 +54,7 @@ class ScheduleViewModel : ViewModel() {
         title = ""
         scheduleDate = ""
         scheduleTime = ""
+        isDday = false
         selectedCategoryIds = emptySet()
         isInitialized = false
     }

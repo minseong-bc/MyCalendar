@@ -13,16 +13,16 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.mycalendar.ui.admin.AdminScreen
 import com.example.mycalendar.ui.category.CategoryAddScreen
-import com.example.mycalendar.ui.AppColors
+import com.example.mycalendar.ui.category.CategoryEdit
+import com.example.mycalendar.ui.D_day.DdayScreen
 import com.example.mycalendar.ui.login.LoginScreen
+import com.example.mycalendar.ui.main.MainColors
 import com.example.mycalendar.ui.main.MainScreen
 import com.example.mycalendar.ui.schedule.ScheduleDto
 import com.example.mycalendar.ui.schedule.ScheduleScreen
 import com.example.mycalendar.ui.schedule.ScheduleViewModel
 import com.example.mycalendar.ui.signup.SignUpScreen
 import com.example.mycalendar.ui.theme.MyCalendarTheme
-import com.example.mycalendar.ui.category.CategoryEdit  
-import com.example.mycalendar.ui.D_day.DdayScreen       
 import io.github.jan.supabase.auth.auth
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
@@ -34,7 +34,7 @@ class MainActivity : ComponentActivity() {
             MyCalendarTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = AppColors.Background
+                    color = MainColors.Background
                 ) {
                     val navController = rememberNavController()
                     val coroutineScope = rememberCoroutineScope()
@@ -76,12 +76,8 @@ class MainActivity : ComponentActivity() {
                                     navController.currentBackStackEntry?.savedStateHandle?.set("initialDate", null as String?)
                                     navController.navigate("schedule_add")
                                 },
-                                onNavigateToCategoryEdit = {
-                                    // 기존 "category_add" -> "category_edit" 로 수정
-                                    navController.navigate("category_edit")
-                                },
-                                onNavigateToDDay = { 
-                                    navController.navigate("dday_screen") 
+                                onNavigateToAddCategory = {
+                                    navController.navigate("category_add")
                                 },
                                 onLogout = {
                                     coroutineScope.launch {
