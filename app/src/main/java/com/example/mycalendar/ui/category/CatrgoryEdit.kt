@@ -46,6 +46,10 @@ fun CategoryEdit(
     
     // 삭제 대상 카테고리 상태 (null이 아니면 삭제 팝업 표시)
     var categoryToDelete by remember { mutableStateOf<CategoryDto?>(null) }
+    
+    // 1. 수정 대상 카테고리 및 입력한 이름 상태
+    var categoryToEdit by remember { mutableStateOf<CategoryDto?>(null) }
+    var editedTitle by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
         coroutineScope.launch {
@@ -118,6 +122,10 @@ fun CategoryEdit(
                     items(categories) { category ->
                         CategoryItemCard(
                             category = category,
+                            onEditClick = {
+                                categoryToEdit = category
+                                editedTitle = category.title ?: ""
+                            },
                             onDeleteClick = { categoryToDelete = category }
                         )
                     }
@@ -126,7 +134,85 @@ fun CategoryEdit(
         }
     }
 
-    // 1. 삭제 확인 AlertDialog 팝업
+    // 1, 1-1. 카테고리 수정 팝업
+    categoryToEdit?.let { category ->
+        AlertDialog(
+            onDismissRequest = { categoryToEdit = null },
+            containerColor = CategoryEditColors.Card,
+            title = {
+                Text(
+                    text = "카테고리 수정",
+                    color = CategoryEditColors.TextWhite,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = editedTitle,
+                        onValueChange = { editedTitle = it },
+                        label = { Text("카테고리 이름", color = CategoryEditColors.TextGray) },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = CategoryEditColors.TextWhite,
+                            unfocusedTextColor = CategoryEditColors.TextWhite,
+                            focusedBorderColor = CategoryEditColors.Primary,
+                            unfocusedBorderColor = CategoryEditColors.TextGray,
+                            cursorColor = CategoryEditColors.Primary
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            // 3. 수정 버튼 선택 시 categories 테이블의 title 값 변경
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val targetCategory = category
+                        val newTitle = editedTitle.trim()
+
+                        if (newTitle.isBlank()) {
+                            Toast.makeText(context, "카테고리 이름을 입력해주세요", Toast.LENGTH_SHORT).show()
+                            return@TextButton
+                        }
+
+                        categoryToEdit = null
+
+                        coroutineScope.launch {
+                            try {
+                                targetCategory.category_id?.let { id ->
+                                    SupabaseClient.client.postgrest["categories"].update(
+                                        { set("title", newTitle) }
+                                    ) {
+                                        filter { eq("category_id", id) }
+                                    }
+
+                                    // 로컬 목록 갱신
+                                    categories = categories.map {
+                                        if (it.category_id == id) it.copy(title = newTitle) else it
+                                    }
+                                    Toast.makeText(context, "카테고리를 수정하였습니다", Toast.LENGTH_SHORT).show()
+                                }
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                                Toast.makeText(context, "카테고리 수정에 실패하였습니다", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                ) {
+                    Text("수정", color = CategoryEditColors.Primary, fontWeight = FontWeight.Bold)
+                }
+            },
+            // 2. '취소' 버튼 선택 시 수정 취소
+            dismissButton = {
+                TextButton(onClick = { categoryToEdit = null }) {
+                    Text("취소", color = CategoryEditColors.TextWhite)
+                }
+            }
+        )
+    }
+
+    // 삭제 확인 AlertDialog 팝업
     categoryToDelete?.let { category ->
         AlertDialog(
             onDismissRequest = { categoryToDelete = null },
@@ -144,7 +230,6 @@ fun CategoryEdit(
                     color = CategoryEditColors.TextGray
                 )
             },
-            // 3. '삭제' 선택 시 DB 삭제 실행
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -183,6 +268,7 @@ fun CategoryEdit(
 @Composable
 fun CategoryItemCard(
     category: CategoryDto,
+    onEditClick: () -> Unit,
     onDeleteClick: () -> Unit
 ) {
     Card(
@@ -209,7 +295,7 @@ fun CategoryItemCard(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = { /* 수정 기능 미구현 */ }) {
+                IconButton(onClick = onEditClick) {
                     Icon(
                         imageVector = Icons.Default.Edit,
                         contentDescription = "수정",
