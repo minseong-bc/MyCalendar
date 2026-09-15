@@ -75,14 +75,31 @@ fun ScheduleScreen(
 
     val calendar = Calendar.getInstance()
 
+    val (initialYear, initialMonth, initialDay) = remember(viewModel.scheduleDate) {
+        val dateParts = viewModel.scheduleDate.split("-")
+        if (dateParts.size == 3) {
+            Triple(
+                dateParts[0].toIntOrNull() ?: calendar.get(Calendar.YEAR),
+                (dateParts[1].toIntOrNull() ?: (calendar.get(Calendar.MONTH) + 1)) - 1,
+                dateParts[2].toIntOrNull() ?: calendar.get(Calendar.DAY_OF_MONTH)
+            )
+        } else {
+            Triple(
+                calendar.get(Calendar.YEAR),
+                calendar.get(Calendar.MONTH),
+                calendar.get(Calendar.DAY_OF_MONTH)
+            )
+        }
+    }
+
     val datePickerDialog = DatePickerDialog(
         context,
         { _, year, month, dayOfMonth ->
             viewModel.scheduleDate = String.format("%04d-%02d-%02d", year, month + 1, dayOfMonth)
         },
-        calendar.get(Calendar.YEAR),
-        calendar.get(Calendar.MONTH),
-        calendar.get(Calendar.DAY_OF_MONTH)
+        initialYear,
+        initialMonth,
+        initialDay
     )
 
     LaunchedEffect(scheduleToEdit) {
@@ -98,7 +115,14 @@ fun ScheduleScreen(
         topBar = {
             TopAppBar(
                 title = { Text(if (isEditMode) "일정 수정" else "일정 등록", color = MainColors.TextWhite) },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "뒤로가기", tint = MainColors.TextWhite) } },
+                navigationIcon = {
+                    IconButton(onClick = {
+                        viewModel.clearInputs()
+                        onBack()
+                    }) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "뒤로가기", tint = MainColors.TextWhite)
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MainColors.Background)
             )
         }
@@ -241,7 +265,6 @@ fun ScheduleScreen(
                                 val targetScheduleId = scheduleToEdit?.schedule_id ?: UUID.randomUUID().toString()
 
                                 if (isEditMode) {
-                                    // ★ buildJsonObject를 사용해 Any 시리얼라이즈 에러 방지 및 dday=false 값 보장
                                     val updateData = buildJsonObject {
                                         put("user_uuid", user.id)
                                         put("title", viewModel.title)
@@ -321,7 +344,7 @@ fun ScheduleScreen(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WheelTimePickerDialog(
     initialHour: Int,

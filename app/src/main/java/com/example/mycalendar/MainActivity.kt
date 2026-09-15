@@ -70,7 +70,7 @@ class MainActivity : ComponentActivity() {
                                     navController.currentBackStackEntry?.savedStateHandle?.set("scheduleJson", null as String?)
                                     navController.navigate("schedule_add")
                                 },
-                                onNavigateToEditSchedule = { schedule ->
+                                onNavigateToEditSchedule = { schedule, sourceTab ->
                                     val scheduleJson = Json.encodeToString(ScheduleDto.serializer(), schedule)
                                     navController.currentBackStackEntry?.savedStateHandle?.set("scheduleJson", scheduleJson)
                                     navController.currentBackStackEntry?.savedStateHandle?.set("initialDate", null as String?)

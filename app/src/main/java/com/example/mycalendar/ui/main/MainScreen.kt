@@ -54,6 +54,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.unit.dp
 import com.example.mycalendar.ui.category.CategoryEdit
 import androidx.activity.compose.BackHandler
+import android.content.Context
+import java.time.LocalDate
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.filled.List
 
 object MainColors {
     val Background = Color(0xFF161924)
@@ -74,13 +82,14 @@ object MainColors {
 
 @Composable
 fun MainScreen(
+    initialTab: String = "홈",
     onNavigateToAddSchedule: (String?) -> Unit,
-    onNavigateToEditSchedule: (ScheduleDto) -> Unit,
+    onNavigateToEditSchedule: (ScheduleDto, String) -> Unit,
     onNavigateToAddCategory: () -> Unit,
     onLogout: () -> Unit
 ) {
-    val tabHistory = remember { mutableStateListOf("홈") }
-    val currentTab = tabHistory.lastOrNull() ?: "홈"
+    val tabHistory = remember { mutableStateListOf(initialTab) }
+    val currentTab = tabHistory.lastOrNull() ?: initialTab
 
     BackHandler(enabled = tabHistory.size > 1) {
         tabHistory.removeAt(tabHistory.lastIndex)
@@ -106,9 +115,12 @@ fun MainScreen(
                 "홈" -> HomeCalendarContent(
                     onLogout = onLogout,
                     onNavigateToAddSchedule = onNavigateToAddSchedule,
-                    onNavigateToEditSchedule = onNavigateToEditSchedule,
+                    onNavigateToEditSchedule = { schedule ->
+                        onNavigateToEditSchedule(schedule, "홈")
+                    },
                     onNavigateToCategoryEdit = { selectTab("카테고리") }
                 )
+
                 "카테고리" -> CategoryEdit(
                     onBack = {
                         if (tabHistory.size > 1) {
@@ -118,64 +130,20 @@ fun MainScreen(
                         }
                     }
                 )
-                "D-Day" -> DdayScreen()
-            }
-        }
-    }
-}
 
-@Composable
-fun CategoryFilterBarSection(
-    displayCategories: List<com.example.mycalendar.ui.schedule.CategoryDto>,
-    selectedCategoryIds: Set<String>,
-    onCategoryToggle: (String?) -> Unit,
-    onNavigateToCategoryEdit: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        LazyRow(
-            modifier = Modifier.weight(1f),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            item(key = "ALL_CATEGORY") {
-                CategoryChip(
-                    title = "전체",
-                    isSelected = selectedCategoryIds.isEmpty(),
-                    activeColor = MainColors.Primary,
-                    onSelect = { onCategoryToggle(null) }
+                "D-Day" -> DdayScreen(
+                    onBack = {
+                        if (tabHistory.size > 1) {
+                            tabHistory.removeAt(tabHistory.lastIndex)
+                        } else {
+                            selectTab("홈")
+                        }
+                    },
+                    onNavigateToEdit = { schedule ->
+                        onNavigateToEditSchedule(schedule, "D-Day")
+                    }
                 )
             }
-
-            itemsIndexed(
-                items = displayCategories,
-                key = { _, category -> category.category_id?.toString() ?: category.hashCode().toString() }
-            ) { index, category ->
-                val categoryId = category.category_id?.toString()
-                val isSelected = categoryId != null && selectedCategoryIds.contains(categoryId)
-                val chipColor = MainColors.CategoryColors[index % MainColors.CategoryColors.size]
-
-                CategoryChip(
-                    title = category.title,
-                    isSelected = isSelected,
-                    activeColor = chipColor,
-                    onSelect = { onCategoryToggle(categoryId) }
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.width(4.dp))
-
-        IconButton(onClick = onNavigateToCategoryEdit) {
-            Icon(
-                imageVector = Icons.Default.Settings,
-                contentDescription = "카테고리 목록/관리",
-                tint = MainColors.TextGray
-            )
         }
     }
 }
@@ -201,6 +169,10 @@ fun HomeCalendarContent(
     var showDialog by remember { mutableStateOf(false) }
     var selectedDate by remember { mutableStateOf<Int?>(null) }
     var showLogoutDialog by remember { mutableStateOf(false) }
+
+    var showTodayPopup by remember { mutableStateOf(false) }
+    var hasShownTodayPopup by remember { mutableStateOf(false) }
+    var todayUncompletedSchedules by remember { mutableStateOf<List<ScheduleDto>>(emptyList()) }
 
     fun fetchAllData() {
         coroutineScope.launch {
@@ -232,6 +204,21 @@ fun HomeCalendarContent(
                     } else {
                         scheduleMappings = emptyList()
                     }
+
+                    val todayStr = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+                    val prefs = context.getSharedPreferences("calendar_prefs", Context.MODE_PRIVATE)
+                    val hideDate = prefs.getString("hide_today_popup_date", "")
+
+                    val uncompletedToday = fetchedSchedules.filter {
+                        it.schedule_date == todayStr && !it.is_completed
+                    }
+
+                    if (uncompletedToday.isNotEmpty() && !hasShownTodayPopup && hideDate != todayStr) {
+                        todayUncompletedSchedules = uncompletedToday
+                        showTodayPopup = true
+                        hasShownTodayPopup = true
+                    }
+
                 } else {
                     categories = emptyList()
                     schedules = emptyList()
@@ -320,43 +307,22 @@ fun HomeCalendarContent(
             }
         }
 
-        LazyRow(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            item(key = "ALL_CATEGORY") {
-                CategoryChip(
-                    title = "전체",
-                    isSelected = selectedCategoryIds.isEmpty(),
-                    activeColor = MainColors.Primary,
-                    onSelect = { selectedCategoryIds = emptySet() }
-                )
-            }
-
-            itemsIndexed(
-                items = displayCategories,
-                key = { _, category -> category.category_id?.toString() ?: category.hashCode().toString() }
-            ) { index, category ->
-                val categoryId = category.category_id?.toString()
-                val isSelected = categoryId != null && selectedCategoryIds.contains(categoryId)
-                val chipColor = MainColors.CategoryColors[index % MainColors.CategoryColors.size]
-
-                CategoryChip(
-                    title = category.title,
-                    isSelected = isSelected,
-                    activeColor = chipColor,
-                    onSelect = {
-                        if (categoryId != null) {
-                            selectedCategoryIds = if (isSelected) {
-                                selectedCategoryIds - categoryId
-                            } else {
-                                selectedCategoryIds + categoryId
-                            }
-                        }
+        CategoryFilterBarSection(
+            displayCategories = displayCategories,
+            selectedCategoryIds = selectedCategoryIds,
+            onCategoryToggle = { categoryId: String? ->
+                selectedCategoryIds = if (categoryId == null) {
+                    emptySet()
+                } else {
+                    if (selectedCategoryIds.contains(categoryId)) {
+                        selectedCategoryIds - categoryId
+                    } else {
+                        selectedCategoryIds + categoryId
                     }
-                )
-            }
-        }
+                }
+            },
+            onNavigateToCategoryEdit = onNavigateToCategoryEdit
+        )
 
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -428,7 +394,6 @@ fun HomeCalendarContent(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // 달력 영역
         Card(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).weight(1f),
             colors = CardDefaults.cardColors(containerColor = MainColors.Card),
@@ -476,6 +441,18 @@ fun HomeCalendarContent(
             }
         }
         Spacer(modifier = Modifier.height(16.dp))
+    }
+
+    if (showTodayPopup) {
+        TodayScheduleDialog(
+            schedules = todayUncompletedSchedules,
+            onDismiss = { showTodayPopup = false },
+            onDoNotShowToday = {
+                val todayStr = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+                val prefs = context.getSharedPreferences("calendar_prefs", Context.MODE_PRIVATE)
+                prefs.edit().putString("hide_today_popup_date", todayStr).apply()
+            }
+        )
     }
 
     if (showLogoutDialog) {
@@ -703,6 +680,184 @@ fun HomeCalendarContent(
             }
         }
     }
+}
+
+@Composable
+fun CategoryFilterBarSection(
+    displayCategories: List<CategoryDto>,
+    selectedCategoryIds: Set<String>,
+    onCategoryToggle: (String?) -> Unit,
+    onNavigateToCategoryEdit: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        LazyRow(
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            item {
+                FilterChip(
+                    selected = selectedCategoryIds.isEmpty(),
+                    onClick = { onCategoryToggle(null) },
+                    label = { Text("전체", color = MainColors.TextWhite) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MainColors.Primary,
+                        containerColor = MainColors.Card
+                    )
+                )
+            }
+
+            itemsIndexed(displayCategories) { index, category ->
+                val catId = category.category_id?.toString()
+                val isSelected = catId != null && selectedCategoryIds.contains(catId)
+                val chipColor = MainColors.CategoryColors[index % MainColors.CategoryColors.size]
+
+                FilterChip(
+                    selected = isSelected,
+                    onClick = { if (catId != null) onCategoryToggle(catId) },
+                    label = { Text(category.title, color = MainColors.TextWhite) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = chipColor,
+                        containerColor = MainColors.Card
+                    )
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        IconButton(
+            onClick = onNavigateToCategoryEdit,
+            modifier = Modifier
+                .size(40.dp)
+                .background(MainColors.Card, CircleShape)
+        ) {
+            Icon(
+                imageVector = Icons.Default.List,
+                contentDescription = "카테고리 상세 목록",
+                tint = MainColors.TextWhite
+            )
+        }
+    }
+}
+@Composable
+fun TodayScheduleDialog(
+    schedules: List<ScheduleDto>,
+    onDismiss: () -> Unit,
+    onDoNotShowToday: () -> Unit
+) {
+    val todayDateFormatted = remember { LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy년 MM월 dd일")) }
+    val currentTimeStr = remember { LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm")) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = MainColors.Card,
+        title = {
+            Column {
+                Text(
+                    text = "오늘의 일정",
+                    color = MainColors.TextWhite,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = todayDateFormatted,
+                    color = MainColors.TextGray,
+                    fontSize = 13.sp
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                schedules.forEach { schedule ->
+                    val isPast = schedule.schedule_time.take(5) < currentTimeStr
+
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isPast) MainColors.Background.copy(alpha = 0.6f) else MainColors.Background
+                        ),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = schedule.title,
+                                color = if (isPast) MainColors.TextGray else MainColors.TextWhite,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 15.sp,
+                                modifier = Modifier.weight(1f)
+                            )
+
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (isPast) {
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.errorContainer,
+                                        shape = RoundedCornerShape(4.dp),
+                                        modifier = Modifier.padding(end = 6.dp)
+                                    ) {
+                                        Text(
+                                            text = "지남",
+                                            color = MaterialTheme.colorScheme.onErrorContainer,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+
+                                Text(
+                                    text = schedule.schedule_time,
+                                    color = if (isPast) MainColors.TextGray else MainColors.Primary,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = {
+                    onDoNotShowToday()
+                    onDismiss()
+                }
+            ) {
+                Text(
+                    text = "오늘 하루 보지 않기",
+                    color = MainColors.TextGray,
+                    fontSize = 13.sp
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onDismiss,
+                colors = ButtonDefaults.buttonColors(containerColor = MainColors.Primary),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text("닫기", color = MainColors.TextWhite, fontWeight = FontWeight.Bold)
+            }
+        }
+    )
 }
 
 @Composable
