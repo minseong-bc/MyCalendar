@@ -29,6 +29,8 @@ import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.postgrest
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import java.util.Calendar
 import java.util.UUID
 
@@ -83,7 +85,7 @@ fun ScheduleScreen(
         calendar.get(Calendar.DAY_OF_MONTH)
     )
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(scheduleToEdit) {
         try {
             viewModel.loadCategoriesAndData(scheduleToEdit, initialDate)
         } catch (e: Exception) {
@@ -238,24 +240,33 @@ fun ScheduleScreen(
                                 val user = SupabaseClient.client.auth.currentUserOrNull() ?: throw Exception("로그인 정보가 없습니다.")
                                 val targetScheduleId = scheduleToEdit?.schedule_id ?: UUID.randomUUID().toString()
 
-                                val scheduleData = ScheduleDto(
-                                    schedule_id = targetScheduleId,
-                                    user_uuid = user.id,
-                                    title = viewModel.title,
-                                    schedule_date = viewModel.scheduleDate,
-                                    schedule_time = viewModel.scheduleTime,
-                                    is_completed = scheduleToEdit?.is_completed ?: false,
-                                    dday = viewModel.isDday
-                                )
-
                                 if (isEditMode) {
-                                    SupabaseClient.client.postgrest["schedules"].update(scheduleData) {
+                                    // ★ buildJsonObject를 사용해 Any 시리얼라이즈 에러 방지 및 dday=false 값 보장
+                                    val updateData = buildJsonObject {
+                                        put("user_uuid", user.id)
+                                        put("title", viewModel.title)
+                                        put("schedule_date", viewModel.scheduleDate)
+                                        put("schedule_time", viewModel.scheduleTime)
+                                        put("is_completed", scheduleToEdit?.is_completed ?: false)
+                                        put("dday", viewModel.isDday)
+                                    }
+
+                                    SupabaseClient.client.postgrest["schedules"].update(updateData) {
                                         filter { eq("schedule_id", targetScheduleId) }
                                     }
                                     SupabaseClient.client.postgrest["schedule_categories"].delete {
                                         filter { eq("schedule_id", targetScheduleId) }
                                     }
                                 } else {
+                                    val scheduleData = ScheduleDto(
+                                        schedule_id = targetScheduleId,
+                                        user_uuid = user.id,
+                                        title = viewModel.title,
+                                        schedule_date = viewModel.scheduleDate,
+                                        schedule_time = viewModel.scheduleTime,
+                                        is_completed = false,
+                                        dday = viewModel.isDday
+                                    )
                                     SupabaseClient.client.postgrest["schedules"].insert(scheduleData)
                                 }
 
@@ -437,5 +448,3 @@ private fun WheelPicker(
         }
     }
 }
-
-
